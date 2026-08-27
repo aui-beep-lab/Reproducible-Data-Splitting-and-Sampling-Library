@@ -1,0 +1,130 @@
+```{r}
+# ============================================================
+# Data Splitting and Sampling Library
+# Reusable, reproducible functions for preparing modelling data
+# ============================================================
+
+#' Split a data frame into training and test sets
+#
+# Standardizes train/test splitting across projects so every team
+# member uses the same reproducible logic instead of ad hoc sampling.
+#
+# @param df A data frame
+# @param train_frac Proportion of rows for training, defaults to 0.8
+# @param seed Random seed for reproducibility, defaults to 42
+# @return A named list with train and test data frames
+split_data <- function(df, train_frac = 0.8, seed = 42) {
+  if (train_frac <= 0 || train_frac >= 1) {
+    stop("train_frac must be between 0 and 1")
+  }
+
+  set.seed(seed)
+  n <- nrow(df)
+  train_idx <- sample(seq_len(n), size = floor(train_frac * n))
+
+  list(
+    train = df[train_idx, , drop = FALSE],
+    test = df[-train_idx, , drop = FALSE]
+  )
+}
+
+# Split a data frame into train, validation, and test sets
+#
+# Extends split_data to support a three-way split, common in
+# machine learning workflows that need a separate tuning set.
+# @param df A data frame
+# @param train_frac Proportion for training, defaults to 0.7
+# @param val_frac Proportion for validation, defaults to 0.15
+# @param seed Random seed for reproducibility, defaults to 42
+# @return A named list with train, validation, and test data frames
+split_data_three_way <- function(df, train_frac = 0.7, val_frac = 0.15, seed = 42) {
+  if (train_frac + val_frac >= 1) {
+    stop("train_frac + val_frac must be less than 1")
+  }
+
+  set.seed(seed)
+  n <- nrow(df)
+  shuffled_idx <- sample(seq_len(n))
+
+  train_end <- floor(train_frac * n)
+  val_end <- train_end + floor(val_frac * n)
+
+  list(
+    train = df[shuffled_idx[1:train_end], , drop = FALSE],
+    validation = df[shuffled_idx[(train_end + 1):val_end], , drop = FALSE],
+    test = df[shuffled_idx[(val_end + 1):n], , drop = FALSE]
+  )
+}
+
+# Stratified split preserving class proportions
+#
+# Useful for classification problems with imbalanced target classes,
+# ensuring both train and test sets reflect the original distribution.
+# @param df A data frame
+# @param target_col Name of the categorical target column
+# @param train_frac Proportion for training, defaults to 0.8
+# @param seed Random seed for reproducibility, defaults to 42
+# @return A named list with train and test data frames
+stratified_split <- function(df, target_col, train_frac = 0.8, seed = 42) {
+  if (!target_col %in% names(df)) {
+    stop(paste("Column", target_col, "not found in data frame"))
+  }
+
+  set.seed(seed)
+  classes <- unique(df[[target_col]])
+  train_list <- list()
+  test_list <- list()
+
+  for (cls in classes) {
+    cls_df <- df[df[[target_col]] == cls, , drop = FALSE]
+    n_cls <- nrow(cls_df)
+    idx <- sample(seq_len(n_cls), size = floor(train_frac * n_cls))
+    train_list[[as.character(cls)]] <- cls_df[idx, , drop = FALSE]
+    test_list[[as.character(cls)]] <- cls_df[-idx, , drop = FALSE]
+  }
+
+  list(
+    train = do.call(rbind, train_list),
+    test = do.call(rbind, test_list)
+  )
+}
+
+#' Cross-validation fold generator
+# Generates k-fold indices for cross-validation so folds are
+# consistent and reusable across different models on the same data.
+# @param df A data frame
+# @param k Number of folds, defaults to 5
+# @param seed Random seed for reproducibility, defaults to 42
+# @return A list of length k, each element a vector of row indices for that fold
+make_cv_folds <- function(df, k = 5, seed = 42) {
+  set.seed(seed)
+  n <- nrow(df)
+  shuffled_idx <- sample(seq_len(n))
+  fold_assignments <- cut(seq_len(n), breaks = k, labels = FALSE)
+
+  folds <- lapply(1:k, function(i) shuffled_idx[fold_assignments == i])
+  names(folds) <- paste0("fold_", 1:k)
+  folds
+}
+
+# ------------------ Use Case Scenario ------------------
+# read dataset directly from file location, here I am using a CSV file
+# you can replace this with your own local path or dataset URL
+df <- read.csv("Path of the dataset.csv", stringsAsFactors = FALSE)
+
+split1 <- split_data(df, train_frac = 0.75)
+split1$train
+split1$test
+
+split2 <- split_data_three_way(df)
+split2$train
+split2$validation
+split2$test
+
+split3 <- stratified_split(df, target_col = "pass")
+table(split3$train$pass)
+table(split3$test$pass)
+
+folds <- make_cv_folds(df, k = 5)
+folds$fold_1
+```
